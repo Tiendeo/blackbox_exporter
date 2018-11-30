@@ -10,6 +10,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+var supportsIP6 bool = checkIP6Support()
+
 // Returns the IP for the preferedIPProtocol and lookup time.
 func chooseProtocol(preferredIPProtocol string, target string, registry *prometheus.Registry, logger log.Logger) (ip *net.IPAddr, lookupTime float64, err error) {
 	var fallbackProtocol string
@@ -26,16 +28,16 @@ func chooseProtocol(preferredIPProtocol string, target string, registry *prometh
 	registry.MustRegister(probeDNSLookupTimeSeconds)
 
 	if preferredIPProtocol == "ip6" || preferredIPProtocol == "" {
-		preferredIPProtocol = "ip6"
-		fallbackProtocol = "ip4"
+		if supportsIP6 {
+			preferredIPProtocol = "ip6"
+			fallbackProtocol = "ip4"
+		} else {
+			preferredIPProtocol = "ip4"
+			fallbackProtocol = ""
+			level.Info(logger).Log("msg", "Cannot resolve ip6 addresses, falling back to ip4", "preferred_ip_protocol", preferredIPProtocol)
+		}
 	} else {
 		preferredIPProtocol = "ip4"
-		fallbackProtocol = "ip6"
-	}
-
-	if preferredIPProtocol == "ip6" {
-		fallbackProtocol = "ip4"
-	} else {
 		fallbackProtocol = "ip6"
 	}
 
@@ -49,6 +51,9 @@ func chooseProtocol(preferredIPProtocol string, target string, registry *prometh
 
 	ip, err = net.ResolveIPAddr(preferredIPProtocol, target)
 	if err != nil {
+		if fallbackProtocol == "" {
+			return ip, 0.0, err
+		}
 		level.Warn(logger).Log("msg", "Resolution with preferred IP protocol failed, attempting fallback protocol", "fallback_protocol", fallbackProtocol, "err", err)
 		ip, err = net.ResolveIPAddr(fallbackProtocol, target)
 		if err != nil {
@@ -64,4 +69,12 @@ func chooseProtocol(preferredIPProtocol string, target string, registry *prometh
 
 	level.Info(logger).Log("msg", "Resolved target address", "ip", ip)
 	return ip, lookupTime, nil
+}
+
+func checkIP6Support() bool {
+	ln, err := net.Listen("tcp6", "")
+	if err == nil {
+		ln.Close()
+	}
+	return err != nil
 }
