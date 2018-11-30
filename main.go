@@ -108,6 +108,13 @@ func probeHandler(w http.ResponseWriter, r *http.Request, c *config.Config, logg
 		return
 	}
 
+	extraParams := make(map[string]string)
+	for key := range params {
+		if key != "target" && key != "module" {
+			extraParams[key] = params.Get(key)
+		}
+	}
+
 	prober, ok := Probers[module.Prober]
 	if !ok {
 		http.Error(w, fmt.Sprintf("Unknown prober %q", module.Prober), http.StatusBadRequest)
@@ -121,7 +128,7 @@ func probeHandler(w http.ResponseWriter, r *http.Request, c *config.Config, logg
 	registry := prometheus.NewRegistry()
 	registry.MustRegister(probeSuccessGauge)
 	registry.MustRegister(probeDurationGauge)
-	success := prober(ctx, target, module, registry, sl)
+	success := prober(ctx, target, module, registry, sl, extraParams)
 	duration := time.Since(start).Seconds()
 	probeDurationGauge.Set(duration)
 	if success {
