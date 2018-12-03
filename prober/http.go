@@ -131,7 +131,7 @@ func (t *transport) GotFirstResponseByte() {
 	t.current.responseStart = time.Now()
 }
 
-func ProbeHTTP(ctx context.Context, target string, module config.Module, registry *prometheus.Registry, logger log.Logger) (success bool) {
+func ProbeHTTP(ctx context.Context, target string, module config.Module, registry *prometheus.Registry, logger log.Logger, extraParams map[string]string) (success bool) {
 	var redirects int
 	var (
 		durationGaugeVec = prometheus.NewGaugeVec(prometheus.GaugeOpts{
@@ -276,6 +276,20 @@ func ProbeHTTP(ctx context.Context, target string, module config.Module, registr
 			continue
 		}
 		request.Header.Set(key, value)
+	}
+
+	const headerPrefix = "header-"
+	for key, value := range extraParams {
+		// query string headers override module configuration
+		if strings.HasPrefix(strings.ToLower(key), headerPrefix) {
+			header := strings.Replace(strings.ToLower(key), headerPrefix, "", 1)
+			level.Info(logger).Log("msg", "Setting HTTP header", "header", header, "value", value)
+			if strings.ToLower(header) == "host" {
+				request.Host = value
+				continue
+			}
+			request.Header.Set(header, value)
+		}
 	}
 
 	level.Info(logger).Log("msg", "Making HTTP request", "url", request.URL.String(), "host", request.Host)
