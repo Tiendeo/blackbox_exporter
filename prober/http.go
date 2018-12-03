@@ -278,16 +278,17 @@ func ProbeHTTP(ctx context.Context, target string, module config.Module, registr
 		request.Header.Set(key, value)
 	}
 
-	const headerPrefix = "header_"
+	const headerPrefix = "header-"
 	for key, value := range extraParams {
 		// query string headers override module configuration
 		if strings.HasPrefix(strings.ToLower(key), headerPrefix) {
-			level.Info(logger).Log("msg", "Setting HTTP header", "header", key, "value", value)
-			if strings.ToLower(key) == "host" {
+			header := strings.Replace(strings.ToLower(key), headerPrefix, "", 1)
+			level.Info(logger).Log("msg", "Setting HTTP header", "header", header, "value", value)
+			if strings.ToLower(header) == "host" {
 				request.Host = value
 				continue
 			}
-			request.Header.Set(key, value)
+			request.Header.Set(header, value)
 		}
 	}
 
