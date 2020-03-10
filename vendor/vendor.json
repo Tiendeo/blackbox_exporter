@@ -235,5 +235,5 @@
 			"versionExact": "v2.2.1"
 		}
 	],
-	"rootPath": "github.com/prometheus/blackbox_exporter"
+	"rootPath": "github.com/Tiendeo/blackbox_exporter"
 }

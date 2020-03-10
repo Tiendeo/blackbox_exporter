@@ -7,7 +7,7 @@ language: go
 go:
 - 1.11.x
 
-go_import_path: github.com/prometheus/blackbox_exporter
+go_import_path: github.com/Tiendeo/blackbox_exporter
 
 script:
 - make

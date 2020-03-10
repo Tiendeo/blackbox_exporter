@@ -28,7 +28,7 @@ import (
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
 
-	"github.com/prometheus/blackbox_exporter/config"
+	"github.com/Tiendeo/blackbox_exporter/config"
 )
 
 var (
