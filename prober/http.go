@@ -210,39 +210,6 @@ func ProbeHTTP(ctx context.Context, target string, module config.Module, registr
 	}
 	durationGaugeVec.WithLabelValues("resolve").Add(lookupTime)
 
-	httpClientConfig := module.HTTP.HTTPClientConfig
-	if len(httpClientConfig.TLSConfig.ServerName) == 0 {
-		// If there is no `server_name` in tls_config, use
-		// the hostname of the target.
-		httpClientConfig.TLSConfig.ServerName = targetHost
-	}
-	client, err := pconfig.NewHTTPClientFromConfig(&httpClientConfig)
-	if err != nil {
-		level.Error(logger).Log("msg", "Error generating HTTP client", "err", err)
-		return false
-	}
-
-	jar, err := cookiejar.New(&cookiejar.Options{PublicSuffixList: publicsuffix.List})
-	if err != nil {
-		level.Error(logger).Log("msg", "Error generating cookiejar", "err", err)
-		return false
-	}
-	client.Jar = jar
-
-	// Inject transport that tracks trace for each redirect.
-	tt := newTransport(client.Transport, logger)
-	client.Transport = tt
-
-	client.CheckRedirect = func(r *http.Request, via []*http.Request) error {
-		level.Info(logger).Log("msg", "Received redirect", "url", r.URL.String())
-		redirects = len(via)
-		if redirects > 10 || httpConfig.NoFollowRedirects {
-			level.Info(logger).Log("msg", "Not following redirect")
-			return errors.New("Don't follow redirects")
-		}
-		return nil
-	}
-
 	if httpConfig.Method == "" {
 		httpConfig.Method = "GET"
 	}
@@ -270,26 +237,62 @@ func ProbeHTTP(ctx context.Context, target string, module config.Module, registr
 		return
 	}
 
+	httpClientConfig := module.HTTP.HTTPClientConfig
+	if len(httpClientConfig.TLSConfig.ServerName) == 0 {
+		// If there is no `server_name` in tls_config, use
+		// the hostname of the target.
+		httpClientConfig.TLSConfig.ServerName = targetHost
+	}
+
 	for key, value := range httpConfig.Headers {
 		if strings.Title(key) == "Host" {
 			request.Host = value
+			httpClientConfig.TLSConfig.ServerName = value
 			continue
 		}
 		request.Header.Set(key, value)
 	}
 
-	const headerPrefix = "header-"
+	const headerPrefix = "header_"
 	for key, value := range extraParams {
 		// query string headers override module configuration
 		if strings.HasPrefix(strings.ToLower(key), headerPrefix) {
-			header := strings.Replace(strings.ToLower(key), headerPrefix, "", 1)
+			header := strings.Replace(strings.Replace(strings.ToLower(key), headerPrefix, "", 1), "_", "-", -1)
 			level.Info(logger).Log("msg", "Setting HTTP header", "header", header, "value", value)
 			if strings.ToLower(header) == "host" {
 				request.Host = value
-				continue
+				httpClientConfig.TLSConfig.ServerName = value
+			} else {
+				request.Header.Set(header, value)
 			}
-			request.Header.Set(header, value)
 		}
+	}
+
+	client, err := pconfig.NewHTTPClientFromConfig(&httpClientConfig)
+	if err != nil {
+		level.Error(logger).Log("msg", "Error generating HTTP client", "err", err)
+		return false
+	}
+
+	jar, err := cookiejar.New(&cookiejar.Options{PublicSuffixList: publicsuffix.List})
+	if err != nil {
+		level.Error(logger).Log("msg", "Error generating cookiejar", "err", err)
+		return false
+	}
+	client.Jar = jar
+
+	// Inject transport that tracks trace for each redirect.
+	tt := newTransport(client.Transport, logger)
+	client.Transport = tt
+
+	client.CheckRedirect = func(r *http.Request, via []*http.Request) error {
+		level.Info(logger).Log("msg", "Received redirect", "url", r.URL.String())
+		redirects = len(via)
+		if redirects > 10 || httpConfig.NoFollowRedirects {
+			level.Info(logger).Log("msg", "Not following redirect")
+			return errors.New("Don't follow redirects")
+		}
+		return nil
 	}
 
 	level.Info(logger).Log("msg", "Making HTTP request", "url", request.URL.String(), "host", request.Host)
